@@ -2,25 +2,28 @@
 
 (defn score [next current all player scores size]
   (let [to-remove (mod (- current 7) size)
-        remaining (drop to-remove all)]
-    [(concat (take to-remove all) (rest remaining))
-     (update scores player (fnil #(+ next (first remaining) %) 0))
+        removed (aget all to-remove)]
+    (System/arraycopy all (inc to-remove) all to-remove (- size to-remove))
+    [all
+     (update scores player (fnil #(+ next removed %) 0))
      to-remove]))
 
 (defn place-marble [next current all size]
   (let [to-skip (mod (inc current) size)
         next-index (inc to-skip)]
-    [(concat (take next-index all) (conj (drop next-index all) next)) next-index]))
+    (System/arraycopy all next-index all (inc next-index) (- size next-index))
+    (aset all next-index next)
+    [all next-index]))
 
 (defn marble [last-marble number-players]
   (loop [current-marble 0
          current-player 0
-         all-marbles [0]
+         all-marbles (int-array (inc last-marble))
          next-marble 1
          scores {}
          size 1]
-;;   (println (take current-marble all-marbles) "(" (first (drop current-marble all-marbles)) ")" (drop (inc current-marble) all-marbles))
-;;    (when (zero? (mod next-marble 250)) (println next-marble))
+;;    (println (take current-marble (into [] all-marbles)) "(" (aget all-marbles current-marble) ")" (drop (inc current-marble) (into [] all-marbles)))
+    (when (zero? (mod next-marble 250)) (println next-marble))
     (cond
       (> next-marble last-marble) scores
       (zero? (mod next-marble 23)) (let [[new-marbles new-scores new-current-marble] (score next-marble current-marble all-marbles current-player scores size)]
@@ -49,5 +52,6 @@
   (apply max (vals (marble 72026 471)))
   
   ;; part 2
+  (apply max (vals (marble 7202600 471)))
   
   )
