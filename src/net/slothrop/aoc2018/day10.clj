@@ -1,4 +1,4 @@
-(ns net.slothrop.aoc2018.day8
+(ns net.slothrop.aoc2018.day10
   (:require [net.slothrop.aoc2018.input :as i]
             [clojure.java.io :as io])
   (:import [javax.swing JFrame JPanel SwingUtilities]
