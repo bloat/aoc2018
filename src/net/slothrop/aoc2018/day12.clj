@@ -34,5 +34,7 @@
   ;; part 1
 
   ;; part 2
-
+  ;; Not much extra code - found the cycle by looking at Mathematica's CellularAutomaton output. Then 
+  ;; fiddled around here to get the start point of the cycle and the score increment each time
+  
   )
