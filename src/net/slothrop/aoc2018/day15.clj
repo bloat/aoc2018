@@ -1,5 +1,4 @@
-(ns net.slothrop.aoc2018.day15
-  (:require [net.slothrop.aoc2018.input :as i]))
+(ns net.slothrop.aoc2018.day15)
 
 (defn make-cave [^String s]
   (into {} (mapcat (fn [l y] (map (fn [c x] [[x y] (if (= c \#) c \.)]) l (range)))
@@ -24,7 +23,7 @@
 (defn final-score [n units]
   (* (dec n) (reduce (fn [acc [_ _ hp _]] (+ acc hp)) 0 (filter identity units))))
 
-(def deltas [[-1 0] [1 0] [0 -1] [0 1]])
+(def deltas [[0 -1] [-1 0] [1 0] [0 1]]) ;; in reading order
 
 (defn can-attack [unit targets]
   (let [[unitx unity _ _] unit]
@@ -46,31 +45,27 @@
                                                   unit))
            units))))
 
-(defn new-paths [cave path shortest-way-to complete-paths units]
-  (let [[^long px ^long py] (first path)
-        prev (second path)]
+(defn new-paths [cave path closed complete-paths units]
+  (let [[^long px ^long py] (first path)]
     (if (and (not (empty? complete-paths)) (> (inc (count path)) (count (first complete-paths))))
       (list)
       (map #(conj path %)
-           (filter (fn [[nx ny :as new]] (and (not (= new prev))
-                                              (or (not (contains? shortest-way-to new)) (>= (shortest-way-to new) (inc (count path))))
+           (filter (fn [[nx ny :as new]] (and (not (contains? closed new))
                                               (= \. (cave new))
                                               (empty? (filter (fn [[ux uy _ _]] (and (= ux nx) (= uy ny))) units))))
                    (map (fn [[^long dx ^long dy]] [(+ dx px) (+ dy py)]) deltas))))))
 
 (defn shortest-path [cave src dests units]
-  (println "SP: " src)
-  (loop [q (conj clojure.lang.PersistentQueue/EMPTY (list src)) shortest-way-to {} complete-paths (sorted-set-by 
-                                                                                                   (fn [[[fax fay] & ra] [[fbx fby] & rb]]
-                                                                                                     (let [[ax ay] (second (reverse ra))
-                                                                                                           [bx by] (second (reverse rb))]
-                                                                                                       (compare (vector fay fax ay ax) (vector fby fbx by bx)))))]
+  (loop [q (conj clojure.lang.PersistentQueue/EMPTY (list src)) closed #{} complete-paths (sorted-set-by 
+                                                                                           (fn [[[fax fay] & ra] [[fbx fby] & rb]]
+                                                                                             (let [[ax ay] (second (reverse ra))
+                                                                                                   [bx by] (second (reverse rb))]
+                                                                                               (compare (vector fay fax ay ax) (vector fby fbx by bx)))))]
     (if (empty? q)
       complete-paths
-      (let [new-paths (new-paths cave (peek q) shortest-way-to complete-paths units)]
-        (println "Count: " (peek q))
+      (let [new-paths (new-paths cave (peek q) closed complete-paths units)]
         (recur (into (pop q) new-paths)
-               (reduce (fn [swt [head & _ :as np]] (assoc swt head (count np))) shortest-way-to new-paths)
+               (into closed (map first new-paths))
                (into complete-paths (filter #(contains? dests (first %)) new-paths)))))))
 
 (defn next-move [cave unit squares units]
@@ -90,7 +85,6 @@
     units))
 
 (defn unit-turn [n cave i units]
-  (println "UT: " n i)
   (if (nil? (units i))
     units
     (let [targets (identify-targets i units)]
@@ -120,6 +114,66 @@
 
 (defn run-game [^String map]
   (iterate round [1 (make-cave map) (make-units map)]))
+
+(defn draw-map [map units]
+  (apply str (nth
+              (reduce (fn [[x y acc] c]
+                        [(if (= \newline c) 0 (inc x))
+                         (if (= \newline c) (inc y) y)
+                         (conj acc (if-let [[_ _ _ t] (some (fn [[ux uy _ _ :as u]] (when (and (= ux x) (= uy y)) u)) units)]
+                                     (if (= t :goblin) \G \E)
+                                     c)
+                               )])
+                      [0 0 []]
+                      (.replaceAll (.replaceAll map "G" ".") "E" "."))
+              2)))
+
+;; part 2
+
+(defn attack-part2 [target units epower]
+  (let [[tx ty _ _] target]
+    (into []
+          (map
+           (fn [[ux uy ^long hp type :as unit]] (if (and (= ux tx) (= uy ty))
+                                                  (if (> hp 3)
+                                                    [ux uy (- hp (if (= type :goblin) epower 3)) type]
+                                                    (if (= type :elf) (throw (RuntimeException. "dead elf"))))
+                                                  unit))
+           units))))
+
+(defn unit-turn-part2 [n cave i units epower]
+  (if (nil? (units i))
+    units
+    (let [targets (identify-targets i units)]
+      (if (empty? targets)
+        (throw (RuntimeException. (str "Final Score: " (final-score n units))))
+        (if-let [to-attack (can-attack (units i) targets)]
+          (attack-part2 to-attack units epower)
+          (let [moved (move cave units i)]
+            (if-let [to-attack (can-attack (moved i) targets)]
+              (attack-part2 to-attack moved epower)
+              moved)))))))
+
+(defn round-part2 [[n cave units epower]]
+  (do ;when (= 0 (mod n 50))
+;;    (println n "elf health" (apply + (map (fn [[_ _ hp t]] (if (= t :elf) hp 0)) units)))
+;;    (println n "goblin health" (apply + (map (fn [[_ _ hp t]] (if (= t :goblin) hp 0)) units)))
+    )
+  (as-> units v
+    (reading-order v)
+    (into [] v)
+    (vector 0 v)
+    (iterate (fn [[^long i units]] [(inc i) (unit-turn-part2 n cave i units epower)]) v)
+    (nth v (count units))
+    (second v)
+    (filter identity v)
+    (into [] v)
+    (vector (inc n) cave v epower)))
+
+(defn run-game-part2 [^String map epower]
+  (iterate round-part2 [1 (make-cave map) (make-units map) epower]))
+
+(try (run-game-part2 game-map 3) (catch Exception e "EX"))
 
 (comment
   (set! *unchecked-math* :warn-on-boxed)
@@ -185,7 +239,24 @@
     (def example-cave4 (make-cave example4))
     (def example-units4 (make-units example4))
 
+    (run-game "#######
+#.E...#
+#.#..G#
+#.###.#
+#E#G#G#
+#...#G#
+#######")
+(def example5 "#########
+#G......#
+#.E.#...#
+#..##..G#
+#...##..#
+#...#...#
+#.G...G.#
+#.....G.#
+#########")
 
+(run-game example5)
   (run-game "#######
 #E..EG#
 #.#G.E#
@@ -193,11 +264,72 @@
 #G..#.#
 #..E#.#
 #######")
+  (def game-map "################################
+#############..#################
+#############..#.###############
+############G..G.###############
+#############....###############
+##############.#...#############
+################..##############
+#############G.##..#..##########
+#############.##.......#..######
+#######.####.G##.......##.######
+######..####.G.......#.##.######
+#####.....#..GG....G......######
+####..###.....#####.......######
+####.........#######..E.G..#####
+####.G..G...#########....E.#####
+#####....G.G#########.#...######
+###........G#########....#######
+##..#.......#########....##.E.##
+##.#........#########.#####...##
+#............#######..#.......##
+#.G...........#####........E..##
+#....G........G..G.............#
+#..................E#...E...E..#
+#....#...##...G...E..........###
+#..###...####..........G###E.###
+#.###########..E.......#########
+#.###############.......########
+#################.......########
+##################....#..#######
+##################..####.#######
+#################..#####.#######
+################################")
+  
+  (run-game game-map)
+  (def game-cave (make-cave game-map))
+  (def game-units (make-units game-map))
 
-  (def game-cave (make-cave i/day15-input))
-  (def game-units (make-units i/day15-input))
+  (println (draw-map game-map (nth round79 2)))
+  (shortest-path game-cave [12 3] (in-range-squares game-cave 0 game-units) game-units)
+  (def round79 (nth  (iterate round [1 (make-cave game-map) (make-units game-map)]) 79))
 
+  (move (second round13) (nth round13 2) 0)
+  (prn round13)
+  (draw-map)
+  (shortest-path (second round13) [17 7]   (in-range-squares (second round13) 0 (nth round13 2)) (nth round13 2))
+
+
+  (def blocked
+    "G...G
+...G.
+..G..
+.G...
+G...E")
+
+  (def blocked-cave (make-cave blocked))
+  (def blocked-units (make-units blocked))
+
+  (shortest-path blocked-cave [0 0] (in-range-squares blocked-cave 0 blocked-units) blocked-units)
   (nth (iterate (fn [[i u]] [(inc i) (move game-cave u i)]) [0 game-units]) 1)
-    ;; part 2
-   
-   )
+
+  
+  ;; part 2
+  (run-game-part2 game-map 16)
+
+  )
+
+
+
+
